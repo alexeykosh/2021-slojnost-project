@@ -9,8 +9,6 @@ complexity = pd.read_csv('data_bothC-namesOK.csv', sep=',')
 complexity['character'] = complexity['character'].str.strip()
 complexity = complexity.set_index('character')
 
-# Python PEP8 Autoformat
-# Functions:
 
 def char_to_unicode(char):
 	'''

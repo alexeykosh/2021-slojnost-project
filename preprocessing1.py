@@ -46,13 +46,13 @@ for filename in os.listdir('FreqDists_50K/'):
 
 res_full = pd.concat(dfs)
 res_full_cl = res_full.dropna(subset=['PCComplexity'])
-ref = pd.DataFrame(res_full_cl.groupby(["lang", "folder"]).size()\
-	.reset_index())
+res_full_cl = res_full_cl[~res_full_cl['folder'].isin(['Cyrl', 'Latn'])]
+ref = pd.DataFrame(res_full_cl.groupby(["lang", "folder"]).size().reset_index())
 langs = ref[~ref.duplicated(subset='lang', keep=False)]['lang']
 langs_d = ref[ref.duplicated(subset='lang', keep=False)]['lang']
 res_full_cl_no_dub = res_full_cl[res_full_cl['lang'].isin(langs)]
-res_full_cl_no_dub = res_full_cl_no_dub[~res_full_cl_no_dub['folder']\
-	.isin(['Cyrl', 'Latn'])]
+res_full_cl_no_dub['folder_lang'] = res_full_cl_no_dub['folder']\
+	+ '_' + res_full_cl_no_dub['lang']
 res_full_cl_no_dub.to_csv('bentz_final.csv')
 
 print(res_full_cl_no_dub.shape)

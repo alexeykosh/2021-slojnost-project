@@ -1,4 +1,4 @@
-import re 
+import re
 import os
 
 import pandas as pd
@@ -12,7 +12,7 @@ complexity = complexity.set_index('character')
 
 def char_to_unicode(char):
 	'''
-	Convert char into respective unicode pointer 
+	Convert char into respective unicode pointer
 	in the same format as in Helena's and Olivier's
 	database
 	'''
@@ -39,16 +39,20 @@ def convert_list_of_words(file):
 	freq['rank'] = freq['Freq'].rank() # get frequency rank
 	return freq
 
+
 for filename in os.listdir('FreqDists_50K/'):
     dfs.append(convert_list_of_words('FreqDists_50K/'+filename))
 
+
 res_full = pd.concat(dfs)
 res_full_cl = res_full.dropna(subset=['PCComplexity'])
-ref = pd.DataFrame(res_full_cl.groupby(["lang", "folder"]).size().reset_index())
+ref = pd.DataFrame(res_full_cl.groupby(["lang", "folder"]).size()\
+	.reset_index())
 langs = ref[~ref.duplicated(subset='lang', keep=False)]['lang']
 langs_d = ref[ref.duplicated(subset='lang', keep=False)]['lang']
 res_full_cl_no_dub = res_full_cl[res_full_cl['lang'].isin(langs)]
-res_full_cl_no_dub = res_full_cl_no_dub[~res_full_cl_no_dub['folder'].isin(['Cyrl', 'Latn'])]
+res_full_cl_no_dub = res_full_cl_no_dub[~res_full_cl_no_dub['folder']\
+	.isin(['Cyrl', 'Latn'])]
 res_full_cl_no_dub.to_csv('bentz_final.csv')
 
 print(res_full_cl_no_dub.shape)

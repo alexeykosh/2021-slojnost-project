@@ -48,12 +48,11 @@ res_full = pd.concat(dfs)
 # (cause multiple files)
 res_full = pd.DataFrame(res_full.groupby(['lang', 'unicode', 'textfile'])['Freq'].\
 						agg({'Freq':'sum',
-						 'file':'size',
-						 'c':'sum'})).reset_index().set_index(['unicode'])
+						 'file':'size'})).reset_index().set_index(['unicode'])
 # Merge with Cognition paper dataset
 res_full = res_full.merge(complexity,
 	left_index=True, right_index=True).reset_index()
-# Count relative frequency
+print(res_full.shape)
 res_full['Sum_count'] = res_full['Freq'].groupby(res_full['lang']).transform('sum')
 res_full['Rel_freq'] = res_full['Freq']/res_full['Sum_count']
 # Remove cyrillic and latin characters
@@ -66,6 +65,10 @@ res_full = res_full[res_full['Sum_prob'] > 0.99]
 # Count frequencies once again
 res_full['Sum_count'] = res_full['Freq'].groupby(res_full['lang']).transform('sum')
 res_full['Rel_freq'] = res_full['Freq']/res_full['Sum_count']
-res_full.to_csv('final.csv')
+# Removing outliers
+i = res_full[(res_full['lang'] == 'pes') & (res_full['folder'] == 'Armn')].index
+res_full = res_full.drop(i, axis=0)
+# print(i)
+res_full.shape
 
-print(res_full_cl.shape)
+print(res_full.shape)

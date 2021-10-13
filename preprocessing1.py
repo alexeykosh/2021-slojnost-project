@@ -1,6 +1,9 @@
 import re
 import os
 import pandas as pd
+import xml.etree.ElementTree as ET
+from xml.etree.ElementTree import ParseError
+from collections import Counter
 
 dfs = []
 
@@ -36,6 +39,52 @@ def convert_list_of_words(file):
 	return freq
 
 
+########### Parsing bible corpora ######################################
+
+
+lgs = ['Armenian', 'Cherokee', 'Coptic', 'Thai',
+       'Telugu', 'Syriac', 'Malayalam', 'Myanmar',
+       'Kannada', 'Korean', 'Amharic', 'Cherokee']
+
+fls = []
+
+for filename in os.listdir('bibles'):
+    if any(s in filename for s in lgs):
+        try:
+            root = ET.fromstring(open('bibles/' + filename).read())
+        except ParseError:
+            print(filename)
+        with open('texts/' + filename.strip('.xml') + '.txt', 'w', encoding='utf-8') as out:
+            for n in root.iter('seg'):
+                try:
+                    out.write(n.text.strip() + '\n')
+                except AttributeError:
+                    pass
+
+dfs = []
+
+for txtfile in os.listdir('texts'):
+    if txtfile not in '.DS_Store':
+        with open('texts/' + txtfile, 'r') as file:
+            text = file.read()
+            text = ''.join(e for e in text.lower() if e.isalnum())
+            df = pd.DataFrame.from_dict(Counter(text), orient='index').reset_index()
+            df['lang'] = txtfile.strip('.txt')
+            dfs.append(df)
+
+data_2 = pd.concat(dfs)
+data_2.columns = ['textfile', 'Freq', 'lang']
+data_2['unicode'] = data_2['textfile'].apply(char_to_unicode)
+data_2 = data_2.set_index('unicode').merge(complexity,
+	left_index=True, right_index=True).reset_index()
+
+data_2['Sum_count'] = data_2['Freq'].groupby(data_2['lang']).transform('sum')
+data_2['Rel_freq'] = data_2['Freq']/data_2['Sum_count']
+data_2 = data_2[~data_2['folder'].isin(['Cyrl', 'Latn'])]
+
+########### Bentz data #################################################
+
+
 exceptions = ['eng-x-bible-scriptures.csv']
 
 for filename in os.listdir('FreqDists_50K/'):
@@ -68,6 +117,7 @@ res_full = res_full.drop(i, axis=0)
 # Count frequencies once again
 res_full['Sum_count'] = res_full['Freq'].groupby(res_full['lang']).transform('sum')
 res_full['Rel_freq'] = res_full['Freq']/res_full['Sum_count']
-res_full.to_csv('final.csv')
+# Concat the two datasets
+pd.concat([res_full, data_2]).to_csv('final.csv')
 
-print(res_full.shape)
+# print(res_full.shape)

@@ -62,13 +62,12 @@ res_full = res_full[~res_full['folder'].isin(['Cyrl', 'Latn'])]
 # we expect it to be at least 0.99, languages with smaller values are removed)
 res_full['Sum_prob'] = res_full['Rel_freq'].groupby(res_full['lang']).transform('sum')
 res_full = res_full[res_full['Sum_prob'] > 0.99]
-# Count frequencies once again
-res_full['Sum_count'] = res_full['Freq'].groupby(res_full['lang']).transform('sum')
-res_full['Rel_freq'] = res_full['Freq']/res_full['Sum_count']
 # Removing outliers
 i = res_full[(res_full['lang'] == 'pes') & (res_full['folder'] == 'Armn')].index
 res_full = res_full.drop(i, axis=0)
-# print(i)
-res_full.shape
+# Count frequencies once again
+res_full['Sum_count'] = res_full['Freq'].groupby(res_full['lang']).transform('sum')
+res_full['Rel_freq'] = res_full['Freq']/res_full['Sum_count']
+res_full.to_csv('final.csv')
 
 print(res_full.shape)

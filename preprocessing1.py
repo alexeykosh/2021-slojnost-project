@@ -11,6 +11,9 @@ complexity = pd.read_csv('data_bothC-namesOK.csv', sep=',')
 complexity['character'] = complexity['character'].str.strip()
 complexity = complexity.set_index('character')
 
+exceptions_l = ['arz', 'pes', 'prs', 'snd', 'urd' , 'grt', 'grc']
+exceptions_s = ['Deva', 'Limb']
+
 
 def char_to_unicode(char):
 	'''
@@ -121,5 +124,9 @@ res_full = res_full.drop(i, axis=0)
 res_full['Sum_count'] = res_full['Freq'].groupby(res_full['lang']).transform('sum')
 res_full['Rel_freq'] = res_full['Freq']/res_full['Sum_count']
 diff = list(set(res_full.folder.unique()) - set(data_2.folder.unique()))
+# Making the final dataset
 res_full = res_full[res_full.folder.isin(diff)]
-pd.concat([res_full, data_2]).reset_index(drop=True).to_csv('final.csv')
+data = pd.concat([res_full, data_2]).reset_index(drop=True)
+data = data[~data.lang.isin(exceptions_l)]
+data = data[~data.folder.isin(exceptions_s)]
+data.reset_index(drop=True).to_csv('final.csv')

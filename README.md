@@ -1,12 +1,21 @@
 # 2021-slojnost-project
 
-### preprocessing1.py
+## 1. Files:
+
+### 1.1. final.csv
+
+The final dataset, obtained using the preprocessing1.py script. Contains
+
+### 1.2. preprocessing1.py
 
 This script is transforming the word-frequency data from the FreqDists_50K folder into
-letter frequencies. The preprocessing pipeline is as follows:
+letter frequencies, as well as counting the frequencies in the bibles.
 
-- Removing characters which weren't matched with the complexity database
-- Removing Cyrillic and Latin scripts
-- Removing languages that have data on more than one WS
+### 1.3. data_checking.ipynb
 
-This resulted in data on writing systems coming from 52 languages.
+This notebooks contains different routines to check the resulting dataset.
+
+### 1.3. simulations.ipynb
+
+This notebooks is used to run the simulation of the desired sample size for texts when collecting
+letter frequencies.

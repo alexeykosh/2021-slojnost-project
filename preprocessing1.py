@@ -42,45 +42,49 @@ def convert_list_of_words(file):
 ########### Parsing bible corpora ######################################
 
 
-lgs = ['Armenian', 'Cherokee', 'Coptic', 'Thai',
-       'Telugu', 'Syriac', 'Malayalam', 'Myanmar',
-       'Kannada', 'Korean', 'Amharic', 'Cherokee']
+# lgs = ['Armenian', 'Cherokee', 'Coptic', 'Thai',
+# 	   'Telugu', 'Syriac', 'Malayalam', 'Myanmar',
+# 	   'Kannada', 'Korean', 'Amharic', 'Cherokee']
 
-fls = []
+# fls = []
 
-for filename in os.listdir('bibles'):
-    if any(s in filename for s in lgs):
-        try:
-            root = ET.fromstring(open('bibles/' + filename).read())
-        except ParseError:
-            print(filename)
-        with open('texts/' + filename.strip('.xml') + '.txt', 'w', encoding='utf-8') as out:
-            for n in root.iter('seg'):
-                try:
-                    out.write(n.text.strip() + '\n')
-                except AttributeError:
-                    pass
+# for filename in os.listdir('bibles'):
+# 	if any(s in filename for s in lgs):
+# 		try:
+# 			root = ET.fromstring(open('bibles/' + filename).read())
+# 		except ParseError:
+# 			print(filename)
+# 		with open('texts2/' + filename.strip('.xml') + '.txt', 'w', encoding='utf-8') as out:
+# 			for n in root.iter('seg'):
+# 				try:
+# 					out.write(n.text.strip() + '\n')
+# 				except AttributeError:
+# 					pass
 
 dfs = []
 
 for txtfile in os.listdir('texts'):
-    if txtfile not in '.DS_Store':
-        with open('texts/' + txtfile, 'r') as file:
-            text = file.read()
-            text = ''.join(e for e in text.lower() if e.isalnum())
-            df = pd.DataFrame.from_dict(Counter(text), orient='index').reset_index()
-            df['lang'] = txtfile.strip('.txt')
-            dfs.append(df)
+	print(txtfile)
+	if txtfile not in '.DS_Store':
+		with open('texts/' + txtfile, 'r') as file:
+			text = file.read()
+			if 'chr' in txtfile:
+				text = ''.join(e for e in text if e.isalnum())
+			else:
+				text = ''.join(e for e in text.lower() if e.isalnum())
+			df = pd.DataFrame.from_dict(Counter(text), orient='index').reset_index()
+			df['lang'] = txtfile[:-4]
+			print(txtfile[:-4])
+			dfs.append(df)
 
 data_2 = pd.concat(dfs)
 data_2.columns = ['textfile', 'Freq', 'lang']
 data_2['unicode'] = data_2['textfile'].apply(char_to_unicode)
 data_2 = data_2.set_index('unicode').merge(complexity,
 	left_index=True, right_index=True).reset_index()
-
+data_2 = data_2[~data_2['folder'].isin(['Cyrl', 'Latn', 'Cyrs', 'Grek'])]
 data_2['Sum_count'] = data_2['Freq'].groupby(data_2['lang']).transform('sum')
 data_2['Rel_freq'] = data_2['Freq']/data_2['Sum_count']
-data_2 = data_2[~data_2['folder'].isin(['Cyrl', 'Latn'])]
 
 ########### Bentz data #################################################
 
@@ -101,11 +105,10 @@ res_full = pd.DataFrame(res_full.groupby(['lang', 'unicode', 'textfile'])['Freq'
 # Merge with Cognition paper dataset
 res_full = res_full.merge(complexity,
 	left_index=True, right_index=True).reset_index()
-print(res_full.shape)
 res_full['Sum_count'] = res_full['Freq'].groupby(res_full['lang']).transform('sum')
 res_full['Rel_freq'] = res_full['Freq']/res_full['Sum_count']
 # Remove cyrillic and latin characters
-res_full = res_full[~res_full['folder'].isin(['Cyrl', 'Latn'])]
+res_full = res_full[~res_full['folder'].isin(['Cyrl', 'Latn', 'Cyrs'])]
 # Sum of probabilities (if language has occasional latin
 # or cyrillic characters,
 # we expect it to be at least 0.99, languages with smaller values are removed)
@@ -117,7 +120,6 @@ res_full = res_full.drop(i, axis=0)
 # Count frequencies once again
 res_full['Sum_count'] = res_full['Freq'].groupby(res_full['lang']).transform('sum')
 res_full['Rel_freq'] = res_full['Freq']/res_full['Sum_count']
-# Concat the two datasets
-pd.concat([res_full, data_2]).to_csv('final.csv')
-
-# print(res_full.shape)
+diff = list(set(res_full.folder.unique()) - set(data_2.folder.unique()))
+res_full = res_full[res_full.folder.isin(diff)]
+pd.concat([res_full, data_2]).reset_index(drop=True).to_csv('final.csv')

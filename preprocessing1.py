@@ -4,6 +4,7 @@ import pandas as pd
 import xml.etree.ElementTree as ET
 from xml.etree.ElementTree import ParseError
 from collections import Counter
+from hangul_utils import split_syllables
 
 dfs = []
 
@@ -73,6 +74,8 @@ for txtfile in os.listdir('texts'):
 			text = file.read()
 			if 'chr' in txtfile:
 				text = ''.join(e for e in text if e.isalnum())
+			elif 'kor' in txtfile:
+				text = split_syllables(''.join(e for e in text if e.isalnum()))
 			else:
 				text = ''.join(e for e in text.lower() if e.isalnum())
 			df = pd.DataFrame.from_dict(Counter(text), orient='index').reset_index()
@@ -129,4 +132,13 @@ res_full = res_full[res_full.folder.isin(diff)]
 data = pd.concat([res_full, data_2]).reset_index(drop=True)
 data = data[~data.lang.isin(exceptions_l)]
 data = data[~data.folder.isin(exceptions_s)]
+data['Unicode'] = data['textfile'].apply(char_to_unicode)
+data = data.rename(columns={"Rel_freq": "Relative_frequency",
+ "compressed": "Compression",
+ "folder": "ISO_script",
+ 'lang': 'ISO_language',
+ 'PCComplexity': 'Perimetric_complexity',
+ 'Freq': 'Frequency'})
+print(data.columns)
 data.reset_index(drop=True).to_csv('final.csv')
+# print(data.columns)

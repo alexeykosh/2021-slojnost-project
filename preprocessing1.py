@@ -6,9 +6,25 @@ from xml.etree.ElementTree import ParseError
 from collections import Counter
 from hangul_utils import split_syllables
 
+jamo = pd.read_csv('PerimComplexRAW.csv', sep='\t')
+jamo['ImageRef'] = jamo['ImageRef'].str.strip('.pnm')
+jamo['ImageRef'] = jamo['ImageRef'].str.upper()
+jamo = jamo[['ImageRef', 'PCComplexity']]
+jamo.columns = ['character', 'PCComplexity']
+jamo['compressed'] = 0
+jamo['folder'] = 'Jamo'
+jamo['LengthScript'] = jamo.shape[0]
+jamo['Idiosyncratic'] = 0
+jamo['Type'] = 'featural system'
+jamo['Family'] = 'East Asian'
+jamo['Ancestor'] = np.nan
+
+complexity = pd.concat([pd.read_csv('data_bothC-namesOK.csv'), jamo])
+complexity.to_csv('data_bothC-namesOK_J.csv')
+
 dfs = []
 
-complexity = pd.read_csv('data_bothC-namesOK.csv', sep=',')
+# complexity = pd.read_csv('data_bothC-namesOK_J.csv', sep=',')
 complexity['character'] = complexity['character'].str.strip()
 complexity = complexity.set_index('character')
 
@@ -68,7 +84,6 @@ def convert_list_of_words(file):
 dfs = []
 
 for txtfile in os.listdir('texts'):
-	print(txtfile)
 	if txtfile not in '.DS_Store':
 		with open('texts/' + txtfile, 'r') as file:
 			text = file.read()
@@ -80,7 +95,6 @@ for txtfile in os.listdir('texts'):
 				text = ''.join(e for e in text.lower() if e.isalnum())
 			df = pd.DataFrame.from_dict(Counter(text), orient='index').reset_index()
 			df['lang'] = txtfile[:-4]
-			print(txtfile[:-4])
 			dfs.append(df)
 
 data_2 = pd.concat(dfs)
@@ -139,6 +153,4 @@ data = data.rename(columns={"Rel_freq": "Relative_frequency",
  'lang': 'ISO_language',
  'PCComplexity': 'Perimetric_complexity',
  'Freq': 'Frequency'})
-print(data.columns)
 data.reset_index(drop=True).to_csv('final.csv')
-# print(data.columns)

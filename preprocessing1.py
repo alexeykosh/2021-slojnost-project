@@ -1,17 +1,20 @@
 import re
 import os
 import pandas as pd
+import numpy as np
 import xml.etree.ElementTree as ET
 from xml.etree.ElementTree import ParseError
 from collections import Counter
 from hangul_utils import split_syllables
 
+# Reading perimetric complexity
 jamo = pd.read_csv('PerimComplexRAW.csv', sep='\t')
 jamo['ImageRef'] = jamo['ImageRef'].str.strip('.pnm')
 jamo['ImageRef'] = jamo['ImageRef'].str.upper()
 jamo = jamo[['ImageRef', 'PCComplexity']]
 jamo.columns = ['character', 'PCComplexity']
-jamo['compressed'] = 0
+jamo_c = pd.read_csv('jamo/results.csv')
+jamo['compressed'] = jamo_c['compressed']
 jamo['folder'] = 'Jamo'
 jamo['LengthScript'] = jamo.shape[0]
 jamo['Idiosyncratic'] = 0
@@ -105,6 +108,7 @@ data_2 = data_2.set_index('unicode').merge(complexity,
 data_2 = data_2[~data_2['folder'].isin(['Cyrl', 'Latn', 'Cyrs', 'Grek'])]
 data_2['Sum_count'] = data_2['Freq'].groupby(data_2['lang']).transform('sum')
 data_2['Rel_freq'] = data_2['Freq']/data_2['Sum_count']
+data_2['Source'] = 'bible.com'
 
 ########### Bentz data #################################################
 
@@ -116,7 +120,7 @@ for filename in os.listdir('FreqDists_50K/'):
 		dfs.append(convert_list_of_words('FreqDists_50K/'+filename))
 
 # Concatenate frequencies from individual files
-res_full = pd.concat(dfs)
+res_full = pd.concat(dfs, sort=True)
 # Sum frequencies by identical characters in each language
 # (cause multiple files)
 res_full = pd.DataFrame(res_full.groupby(['lang', 'unicode', 'textfile'])['Freq'].\
@@ -143,7 +147,9 @@ res_full['Rel_freq'] = res_full['Freq']/res_full['Sum_count']
 diff = list(set(res_full.folder.unique()) - set(data_2.folder.unique()))
 # Making the final dataset
 res_full = res_full[res_full.folder.isin(diff)]
-data = pd.concat([res_full, data_2]).reset_index(drop=True)
+res_full['Source'] = 'Bentz & Ferrer-i-Cancho, 2016'
+res_full.loc[res_full.lang == 'Shavian', 'Source'] = "shavian.info"
+data = pd.concat([res_full, data_2], sort=False).reset_index(drop=True)
 data = data[~data.lang.isin(exceptions_l)]
 data = data[~data.folder.isin(exceptions_s)]
 data['Unicode'] = data['textfile'].apply(char_to_unicode)

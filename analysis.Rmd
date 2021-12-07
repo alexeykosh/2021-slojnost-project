@@ -1,0 +1,257 @@
+---
+title: "Frequency and character complexity in scripts"
+author: "Alexey Koshevoy, Helena Miton and Olivier Morin"
+date: "10/9/2021"
+output: 
+  html_document:
+    theme: flatly
+    number_sections: true
+---
+
+<style type="text/css">
+  body{
+  font-size: 12pt;
+}
+</style>
+
+```{r setup, include=FALSE, echo=FALSE}
+library(tidyverse)
+library(lme4)
+library(lmerTest)
+library(sjPlot) 
+library(sjPlot)
+library(effects)
+library(ggeffects)
+library(ggpubr)
+library(lingtypology)
+library(ggrepel)
+library(MuMIn)
+
+theme_set(theme_bw())
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning = FALSE)
+```
+
+# Descriptive stats
+
+Dataframe:
+
+```{r}
+data <- read.csv('final.csv')
+
+DT::datatable(data, 
+              filter = 'top',
+              rownames = FALSE,
+              escape=FALSE, 
+              # fontSize = '50%',
+              extensions = 'FixedColumns',
+  options = list(
+  dom = 't',
+  scrollX = TRUE,
+  scrollCollapse = TRUE
+)) %>%
+  DT::formatStyle(columns = colnames(.), fontSize = '20%')
+```
+
+Plot the map:
+
+```{r}
+dist <- data %>%
+  distinct(ISO_script, .keep_all = TRUE)
+
+dist$Language <- lang.iso(dist$ISO_language)
+dist$lat <- lat.lang(dist$Language)
+dist$lon <- long.lang(dist$Language)
+dist[dist$ISO_language == 'chr',]$lat <- 35.8513
+dist[dist$ISO_language == 'chr',]$lon <- -94.9878
+
+dist %>%
+  ggplot(aes(x=lon, y=lat))+
+    coord_sf(xlim = c(-100, 120),ylim = c(0, 60), expand = TRUE)+
+    borders("world", colour=alpha("gray50", .2), fill=alpha("gray50", .2))+
+    geom_point(aes(color=Family))+
+    geom_text_repel(aes(label=ISO_script))+
+    theme_void()+
+    # theme(legend.position = "none")+
+    theme(legend.position = 'bottom')+
+    ggsave('map.png', dpi=300)
+
+knitr::plot_crop('map.png')
+```
+
+Count of symbols and number of elelements in each WS:
+
+
+```{r}
+totals <- data %>%
+  group_by(ISO_script, ISO_language) %>%
+  summarise(sum=sum(Frequency), n=n()) %>%
+  arrange(desc(n)) 
+
+DT::datatable(totals, 
+              filter = 'top',
+              rownames = FALSE,
+              escape=FALSE, 
+              extensions = 'FixedColumns',
+  options = list(
+  dom = 't',
+  scrollX = TRUE,
+  scrollCollapse = TRUE
+))
+```
+
+Median values for n of characters in the corpus and n of symbols:
+
+```{r}
+median(totals$n)
+median(totals$sum)
+```
+
+Log-transformation:
+
+```{r}
+nlog <- ggplot(data, aes(x=Relative_frequency))+
+  theme(legend.position = "none")+
+  geom_histogram(aes(y = ..density..), bins=50)+
+  geom_density(color='red', lwd=1)+
+  # ggtitle('Initial frequencies')+
+  xlab('Relative frequency')
+
+log <- ggplot(data, aes(x=log(Relative_frequency)))+
+  theme(legend.position = "none")+
+  geom_histogram(aes(y = ..density..), bins=50)+
+  geom_density(color='red', lwd=1)+
+  # ggtitle('Log-transformed frequencies')+
+  xlab('Relative frequency (log-transformed)')
+
+ggarrange(nlog, log)
+```
+
+Individual distributions:
+
+```{r}
+ggplot(data, aes(x=log(Relative_frequency), color=ISO_language))+
+  theme(legend.position = "none")+
+  geom_histogram()+
+  facet_wrap(~ISO_language, scale='free_y')
+```
+
+# 2. Analysis
+
+Defining the model and comparing the AIC values:
+
+```{r}
+model_full_p <- lmer(formula = Perimetric_complexity ~ 1 + log(Relative_frequency) + (1 + log(Relative_frequency)|ISO_script), data=data)
+model_full_c <- lmer(formula = Compression ~ 1 + log(Relative_frequency) + (1 + log(Relative_frequency)|ISO_script), data=data)
+model_null_p <- lmer(formula =Perimetric_complexity ~ 1 + (1|ISO_script), data=data)
+model_null_c <- lmer(formula =Compression ~ 1 + (1|ISO_script), data=data)
+AIC(model_full_p) < AIC(model_null_p)
+AIC(model_full_c) < AIC(model_null_c)
+```
+
+Model with Perimetric Complexity:
+
+```{r}
+summary(model_full_p)
+```
+
+Model with compression:
+
+```{r}
+summary(model_full_c)
+```
+
+R-squared PC:
+
+```{r}
+r.squaredGLMM(model_full_p)
+```
+
+R-squarred C:
+
+```{r}
+r.squaredGLMM(model_full_c)
+```
+
+Confidence intervals:
+
+```{r}
+confint(model_full_p)
+```
+
+```{r}
+confint(model_full_c)
+```
+
+Get predicted values:
+
+```{r}
+predicted_values_c <- modelr::data_grid(data, Relative_frequency, ISO_script) %>% 
+                   modelr::add_predictions(model_full_c)
+
+predicted_values_p <- modelr::data_grid(data, Relative_frequency, ISO_script) %>% 
+                   modelr::add_predictions(model_full_p)
+```
+
+Plot residuals:
+
+```{r}
+qqnorm(residuals(model_full_p))
+```
+
+
+```{r}
+qqnorm(residuals(model_full_c))
+```
+
+Perimetric complexity predicitons:
+
+```{r}
+predicted_values_p %>% 
+  ggplot(aes(log(Relative_frequency), pred, color = ISO_script))+
+  geom_point(data=data, aes(x=log(Relative_frequency), y=Perimetric_complexity, color=ISO_script), alpha=0.2)+
+  geom_line()+
+  theme(legend.position = "none")+
+  xlab('Frequency (log-transformed)')+
+  ylab('Permiteric complexity')+
+  facet_wrap(~ISO_script, scale='free_x')+
+  ggsave('figures/fig1_p.pdf')
+```
+
+Compression predictions:
+
+```{r}
+predicted_values_c %>% 
+  ggplot(aes(log(Relative_frequency), pred, color = ISO_script))+
+  geom_point(data=data, aes(x=log(Relative_frequency), y=Compression, color=ISO_script), alpha=0.2)+
+  geom_line()+
+  theme(legend.position = "none")+
+  xlab('Frequency (log-transformed)')+
+  ylab('PCompression')+
+  facet_wrap(~ISO_script, scale='free_x')+
+  ggsave('figures/fig1_c.pdf')
+```
+
+Predictions perimetric complexity:
+
+```{r}
+predicted_values_p %>% 
+  ggplot(aes(log(Relative_frequency), pred, color = ISO_script))+
+  geom_point(data=data, aes(x=log(Relative_frequency), y=Perimetric_complexity, color=ISO_script), alpha=0.2)+
+  geom_line()+
+  theme(legend.position = "none")+
+  xlab('Frequency (log-transformed)')+
+  ylab('Permiteric complexity')
+```
+
+Predictions compression:
+
+```{r}
+predicted_values_c %>% 
+  ggplot(aes(log(Relative_frequency), pred, color = ISO_script))+
+  geom_point(data=data, aes(x=log(Relative_frequency), y=Compression, color=ISO_script), alpha=0.2)+
+  geom_line()+
+  theme(legend.position = "none")+
+  xlab('Frequency (log-transformed)')+
+  ylab('Compression')
+```
+

@@ -19,24 +19,28 @@ library(tidyverse)
 library(lme4)
 library(lmerTest)
 library(sjPlot) 
-library(sjPlot)
 library(effects)
+library(showtext)
 library(ggeffects)
 library(ggpubr)
 library(lingtypology)
 library(ggrepel)
 library(MuMIn)
+library(Cairo)
+library(sysfonts)
+library(broom.mixed)
 
 theme_set(theme_bw())
 knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning = FALSE)
 ```
 
-# Descriptive stats
+# Data loading
 
 Dataframe:
 
 ```{r}
 data <- read.csv('final.csv')
+data <- data[data$ISO_language != 'heb',]
 
 DT::datatable(data, 
               filter = 'top',
@@ -49,8 +53,19 @@ DT::datatable(data,
   scrollX = TRUE,
   scrollCollapse = TRUE
 )) %>%
-  DT::formatStyle(columns = colnames(.), fontSize = '20%')
+  DT::formatStyle(columns = colnames(.),
+                  fontSize = '20%')
 ```
+
+Counting types of writing systems:
+
+```{r}
+data %>%
+  distinct(Type, ISO_language)  %>%
+  group_by(Type) %>% 
+  tally()
+```
+
 
 Plot the map:
 
@@ -72,14 +87,14 @@ dist %>%
     geom_text_repel(aes(label=ISO_script))+
     theme_void()+
     # theme(legend.position = "none")+
-    theme(legend.position = 'bottom')+
-    ggsave('map.png', dpi=300)
+    theme(legend.position = 'bottom')
 
-knitr::plot_crop('map.png')
+ggsave('figures/fig1_map.png', dpi=300, width = 8, height = 6)
+
+knitr::plot_crop('figures/fig1_map.png')
 ```
 
-Count of symbols and number of elelements in each WS:
-
+Count of symbols and number of elements in each WS:
 
 ```{r}
 totals <- data %>%
@@ -135,17 +150,35 @@ ggplot(data, aes(x=log(Relative_frequency), color=ISO_language))+
   facet_wrap(~ISO_language, scale='free_y')
 ```
 
-# 2. Analysis
+Correlation of complexity measures:
+
+```{r}
+ggplot(data, aes(x=Perimetric_complexity, y=Compression))+
+  theme(legend.position = "none")+
+  geom_point(size=0.5)+
+  facet_wrap(~ISO_language)
+```
+
+# Analysis
+
+Log-transforming relative frequency:
+
+```{r}
+data$Relative_frequency_l <- log(data$Relative_frequency)
+```
+
 
 Defining the model and comparing the AIC values:
 
 ```{r}
-model_full_p <- lmer(formula = Perimetric_complexity ~ 1 + log(Relative_frequency) + (1 + log(Relative_frequency)|ISO_script), data=data)
-model_full_c <- lmer(formula = Compression ~ 1 + log(Relative_frequency) + (1 + log(Relative_frequency)|ISO_script), data=data)
+# Perimetric complexity model:
+model_full_p <- lmer(formula = Perimetric_complexity ~ 1 + Relative_frequency_l + (1 + Relative_frequency_l|ISO_script), data=data)
+# Algorithmic complexity model:
+model_full_c <- lmer(formula = Compression ~ 1 + Relative_frequency_l + (1 + Relative_frequency_l|ISO_script), data=data)
 model_null_p <- lmer(formula =Perimetric_complexity ~ 1 + (1|ISO_script), data=data)
 model_null_c <- lmer(formula =Compression ~ 1 + (1|ISO_script), data=data)
-AIC(model_full_p) < AIC(model_null_p)
-AIC(model_full_c) < AIC(model_null_c)
+AIC(model_null_p) - AIC(model_full_p)
+AIC(model_null_c) - AIC(model_full_c)
 ```
 
 Model with Perimetric Complexity:
@@ -154,11 +187,113 @@ Model with Perimetric Complexity:
 summary(model_full_p)
 ```
 
+```{r}
+p_sim <- data.frame(Relative_frequency_l = seq(min(data$Relative_frequency_l), max(data$Relative_frequency_l), .01)
+                     )
+fit.mat <- model.matrix(~ Relative_frequency_l, p_sim) 
+cis <- diag(fit.mat %*% tcrossprod(vcov(model_full_p), fit.mat))
+
+p_sim$Perimetric_complexity <- predict(model_full_p, p_sim, re.form = NA)
+p_sim$lwr <- p_sim$Perimetric_complexity-1.96*sqrt(cis)
+p_sim$upr <- p_sim$Perimetric_complexity+1.96*sqrt(cis)
+```
+
+```{r}
+script <- 'Thai'
+font_add("thai", "fonts/thai.ttf")
+
+p1 <- data %>%
+  filter(ISO_script == script) %>%
+  ggplot(aes(x=Relative_frequency_l, y=Perimetric_complexity))+
+  geom_point(data=data,
+             aes(x=Relative_frequency_l,
+                 y=Perimetric_complexity),
+             alpha=0.08)+
+  geom_ribbon(data=p_sim,
+              aes(x=Relative_frequency_l,
+                  y=Perimetric_complexity,
+                  ymin = lwr,
+                  ymax = upr),
+              alpha = .3,
+              fill = "red") +
+  geom_line(data=p_sim,
+            aes(x=Relative_frequency_l,
+                y=Perimetric_complexity),
+            size = 1, color = "red")+
+  geom_point()+
+  geom_text_repel(
+    aes(label=stringi::stri_enc_toutf8(textfile)),
+    family = 'thai',
+    nudge_x = 0.25, nudge_y = 0.25
+  )+
+  scale_y_continuous(breaks = seq(0, max(data$Perimetric_complexity), by = 20))+
+  scale_x_continuous(breaks = seq(-15, 0, by = 3))+
+  xlab('Relative frequency (log-transformed)')+
+  ylab('Perimetric complexity')
+```
+
+
 Model with compression:
 
 ```{r}
 summary(model_full_c)
 ```
+
+
+```{r}
+p_sim <- data.frame(Relative_frequency_l = seq(min(data$Relative_frequency_l), max(data$Relative_frequency_l), .01)
+                     )
+fit.mat <- model.matrix(~ Relative_frequency_l, p_sim) 
+cis <- diag(fit.mat %*% tcrossprod(vcov(model_full_c), fit.mat))
+
+p_sim$Compression <- predict(model_full_c, p_sim, re.form = NA)
+p_sim$lwr <- p_sim$Compression-1.96*sqrt(cis)
+p_sim$upr <- p_sim$Compression+1.96*sqrt(cis)
+
+script <- 'Mlym'
+font_add("mlym", "fonts/malaylam.ttf")
+
+p2 <- data %>%
+  filter(ISO_script == script) %>%
+  ggplot(aes(x=Relative_frequency_l, y=Compression))+
+  geom_point(data=data,
+             aes(x=Relative_frequency_l,
+                 y=Compression),
+             alpha=0.08)+
+  geom_ribbon(data=p_sim,
+              aes(x=Relative_frequency_l,
+                  y=Compression,
+                  ymin = lwr,
+                  ymax = upr),
+              alpha = .3,
+              fill = "blue") +
+  geom_line(data=p_sim,
+            aes(x=Relative_frequency_l,
+                y=Compression),
+            size = 1, color = "blue")+
+  geom_point()+
+  geom_text_repel(
+    aes(label=stringi::stri_enc_toutf8(textfile)),
+    family = 'mlym',
+    nudge_x = 0.25, nudge_y = 0.25
+  )+
+  scale_y_continuous(breaks = seq(0, max(data$Compression), by = 200))+
+  scale_x_continuous(breaks = seq(-15, 0, by = 3))+
+  xlab('Relative frequency (log-transformed)')+
+  ylab('Algorithmic complexity')
+```
+
+```{r}
+ggarrange(p1, p2, 
+          labels = c("A", "B"),
+          ncol = 2, nrow = 1)
+
+ggsave('figures/fig2_pred.png',
+       width = 8,
+       height = 4)
+```
+
+
 
 R-squared PC:
 
@@ -166,7 +301,7 @@ R-squared PC:
 r.squaredGLMM(model_full_p)
 ```
 
-R-squarred C:
+R-squarred AC:
 
 ```{r}
 r.squaredGLMM(model_full_c)
@@ -185,14 +320,26 @@ confint(model_full_c)
 Get predicted values:
 
 ```{r}
-predicted_values_c <- modelr::data_grid(data, Relative_frequency, ISO_script) %>% 
+predicted_values_c <- modelr::data_grid(data, Relative_frequency_l, ISO_script) %>% 
                    modelr::add_predictions(model_full_c)
 
-predicted_values_p <- modelr::data_grid(data, Relative_frequency, ISO_script) %>% 
+predicted_values_p <- modelr::data_grid(data, Relative_frequency_l, ISO_script) %>% 
                    modelr::add_predictions(model_full_p)
+
+predicted_values_c
 ```
 
 Plot residuals:
+
+
+```{r}
+ggplot(data.frame(x=log(data$Relative_frequency),pearson=residuals(model_full_p,type="pearson")),
+    aes(x=x,y=pearson)) +
+    geom_point() +
+    theme_bw()+
+    xlab('Relative frequency')
+```
+
 
 ```{r}
 qqnorm(residuals(model_full_p))
@@ -203,55 +350,214 @@ qqnorm(residuals(model_full_p))
 qqnorm(residuals(model_full_c))
 ```
 
+
+```{r}
+ggplot(augment(model_full_c), aes(.fitted, .resid))+
+  geom_point(alpha=0.5)+
+  geom_hline(yintercept=0, col="red", linetype="dashed")+
+  xlab("Fitted values")+
+  ylab("Residuals")
+```
+
+```{r}
+ggplot(augment(model_full_p), aes(.fitted, .resid))+geom_point(alpha=0.5)+
+  geom_hline(yintercept=0, col="red", linetype="dashed")+
+  xlab("Fitted values")+
+  ylab("Residuals")+
+  ylim(c(-60, 60))
+```
+
+
 Perimetric complexity predicitons:
 
 ```{r}
 predicted_values_p %>% 
-  ggplot(aes(log(Relative_frequency), pred, color = ISO_script))+
-  geom_point(data=data, aes(x=log(Relative_frequency), y=Perimetric_complexity, color=ISO_script), alpha=0.2)+
+  ggplot(aes(Relative_frequency_l, pred, color = ISO_script))+
+  geom_point(data=data, aes(x=Relative_frequency_l, y=Perimetric_complexity, color=ISO_script), alpha=0.2)+
   geom_line()+
   theme(legend.position = "none")+
   xlab('Frequency (log-transformed)')+
-  ylab('Permiteric complexity')+
-  facet_wrap(~ISO_script, scale='free_x')+
-  ggsave('figures/fig1_p.pdf')
+  ylab('Perimetric complexity')+
+  facet_wrap(~ISO_script, scale='free_x')
+
+ggsave('figures/fig1_p.png')
 ```
 
 Compression predictions:
 
 ```{r}
 predicted_values_c %>% 
-  ggplot(aes(log(Relative_frequency), pred, color = ISO_script))+
-  geom_point(data=data, aes(x=log(Relative_frequency), y=Compression, color=ISO_script), alpha=0.2)+
+  ggplot(aes(Relative_frequency_l, pred, color = ISO_script))+
+  geom_point(data=data, aes(x=Relative_frequency_l, y=Compression, color=ISO_script), alpha=0.2)+
   geom_line()+
   theme(legend.position = "none")+
   xlab('Frequency (log-transformed)')+
-  ylab('PCompression')+
-  facet_wrap(~ISO_script, scale='free_x')+
-  ggsave('figures/fig1_c.pdf')
+  ylab('Algorithmic complexity')+
+  facet_wrap(~ISO_script, scale='free_x')
+
+ggsave('figures/fig1_c.png')
 ```
 
 Predictions perimetric complexity:
 
 ```{r}
 predicted_values_p %>% 
-  ggplot(aes(log(Relative_frequency), pred, color = ISO_script))+
-  geom_point(data=data, aes(x=log(Relative_frequency), y=Perimetric_complexity, color=ISO_script), alpha=0.2)+
+  ggplot(aes(Relative_frequency_l, pred, color = ISO_script))+
+  geom_point(data=data, aes(x=Relative_frequency_l, y=Perimetric_complexity, color=ISO_script), alpha=0.2, show.legend = F)+
   geom_line()+
-  theme(legend.position = "none")+
+  theme(legend.position = "bottom", legend.text = element_text(size=7), legend.title = element_blank())+
   xlab('Frequency (log-transformed)')+
-  ylab('Permiteric complexity')
+  ylab('Perimetric complexity')+
+  guides(col=guide_legend(nrow=3, byrow=TRUE))
+
+ggsave('figures/fig2_p.png',  width = 12, height = 7)
 ```
+
 
 Predictions compression:
 
 ```{r}
 predicted_values_c %>% 
-  ggplot(aes(log(Relative_frequency), pred, color = ISO_script))+
-  geom_point(data=data, aes(x=log(Relative_frequency), y=Compression, color=ISO_script), alpha=0.2)+
+  ggplot(aes(Relative_frequency_l, pred, color = ISO_script))+
+  geom_point(data=data, aes(x=Relative_frequency_l, y=Compression, color=ISO_script), alpha=0.2, show.legend = F)+
   geom_line()+
-  theme(legend.position = "none")+
+  theme(legend.position = "bottom", legend.text = element_text(size=7), legend.title = element_blank())+
   xlab('Frequency (log-transformed)')+
-  ylab('Compression')
+  ylab('Compression')+
+  guides(col=guide_legend(nrow=3, byrow=TRUE))
+
+ggsave('figures/fig2_c.png')
 ```
+# Miscellaneous
+
+```{r}
+library(merTools)
+randomSims <- REsim(model_full_c, n.sims = 10000)
+randomSims[randomSims$term == 'Relative_frequency_l',]  %>%
+  full_join(totals, by=c('groupID' = 'ISO_script')) %>%
+  mutate(groupID = fct_reorder(groupID, desc(mean))) %>%
+  mutate(error=qnorm(0.975)*sd/sqrt(n)) %>%
+  mutate(left=mean-error, right=mean+error)%>%
+  ggplot(aes(y=groupID, x=mean))+
+  geom_point()+
+  geom_errorbar(aes(xmin=left, xmax=right))+
+  geom_vline(xintercept = 0, color='red', linetype='dashed')
+
+# randomSims
+```
+
+
+```{r}
+randomSims <- REsim(model_full_p, n.sims = 10000)
+randomSims[randomSims$term == 'Relative_frequency_l',]  %>%
+  full_join(totals, by=c('groupID' = 'ISO_script')) %>%
+  mutate(groupID = fct_reorder(groupID, desc(mean))) %>%
+  mutate(error=qnorm(0.975)*sd/sqrt(n)) %>%
+  mutate(left=mean-error, right=mean+error)%>%
+  ggplot(aes(y=groupID, x=mean))+
+  geom_point()+
+  geom_errorbar(aes(xmin=left, xmax=right))+
+  geom_vline(xintercept = 0, color='red', linetype='dashed')
+```
+
+
+```{r}
+randomSims[randomSims$term == 'Relative_frequency_l',] %>%
+  full_join(totals, by=c('groupID' = 'ISO_script')) %>%
+  ggplot(aes(x=n, y=mean))+
+  geom_point()
+```
+
+
+# Individual predictions
+
+```{r}
+# font_add_google('Nanum Gothic', 'nanum')
+# font_add_google('Benne', 'ben')
+# font_add_google('Noto', 'noto', db_cache = FALSE)
+# font_add_google('Noto Serif Georgian', 'georg')
+font_add("georgian", "fonts/georg.ttf")
+
+showtext_auto()
+
+script <- 'Geor'
+
+data %>%
+  filter(ISO_script == script) %>%
+  ggplot(aes(x=Relative_frequency_l, y=Perimetric_complexity))+
+  geom_line(data=predicted_values_p[predicted_values_p$ISO_script == script,], aes(x=Relative_frequency_l, y=pred))+
+  geom_text(
+    aes(label=stringi::stri_enc_toutf8(textfile)),
+    family = 'georgian',
+    nudge_x = 0.25, nudge_y = 0.25, 
+    check_overlap = T
+  )
+
+ggsave('try.png', width = 6, height = 3)
+```
+
+```{r}
+script <- 'Thai'
+font_add("thai", "fonts/thai.ttf")
+
+data %>%
+  filter(ISO_script == script) %>%
+  ggplot(aes(x=Relative_frequency_l, y=Perimetric_complexity))+
+  geom_line(data=predicted_values_p[predicted_values_p$ISO_script == script,], aes(x=Relative_frequency_l, y=pred))+
+  # theme(text=element_text(family="nanum"))+
+  geom_text(
+    aes(label=stringi::stri_enc_toutf8(textfile)),
+    family = 'thai',
+    nudge_x = 0.25, nudge_y = 0.25, 
+    check_overlap = T
+  )+
+  xlab('Frequency (log-transformed)')+
+  ylab('Perimetric complexity')
+
+ggsave('figures/example1.png', width = 6, height = 3)
+```
+
+```{r}
+script <- 'Mlym'
+font_add("mlym", "fonts/malaylam.ttf")
+
+data %>%
+  filter(ISO_script == script) %>%
+  ggplot(aes(x=Relative_frequency_l, y=Compression))+
+  geom_line(data=predicted_values_c[predicted_values_p$ISO_script == script,], aes(x=Relative_frequency_l, y=pred))+
+  # theme(text=element_text(family="nanum"))+
+  geom_text(
+    aes(label=stringi::stri_enc_toutf8(textfile)),
+    family = 'mlym',
+    nudge_x = 0.25, nudge_y = 0.25, 
+    check_overlap = T
+  )+
+  xlab('Frequency (log-transformed)')+
+  ylab('Algorithmic complexity')
+
+ggsave('figures/example2.png', width = 6, height = 3)
+```
+
+```{r}
+script <- 'Thai'
+font_add("thai", "fonts/thai.ttf")
+
+data %>%
+  filter(ISO_script == script) %>%
+  ggplot(aes(x=Relative_frequency_l, y=Compression))+
+  geom_line(data=predicted_values_c[predicted_values_p$ISO_script == script,], aes(x=Relative_frequency_l, y=pred))+
+  # theme(text=element_text(family="nanum"))+
+  geom_text(
+    aes(label=stringi::stri_enc_toutf8(textfile)),
+    family = 'thai',
+    nudge_x = 0.25, nudge_y = 0.25, 
+    check_overlap = T
+  )+
+  xlab('Frequency (log-transformed)')+
+  ylab('Algorithmic complexity')
+
+ggsave('figures/example3.png', width = 6, height = 3)
+```
+
+
 
